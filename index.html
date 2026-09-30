@@ -4,9 +4,9 @@
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
 <title>truth</title>
-<!-- The page itself at 16px: one word in the middle of the white, already
-     dissolving at its end. Inline, so the work stays a single file. -->
-<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cdefs%3E%3ClinearGradient id='g'%3E%3Cstop offset='.45' stop-color='%23161616'/%3E%3Cstop offset='1' stop-color='%23161616' stop-opacity='0'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='32' height='32' rx='6' fill='%23fbfaf7'/%3E%3Crect x='6' y='14' width='20' height='4' rx='2' fill='url(%23g)'/%3E%3C/svg%3E"/>
+<!-- The page itself at 16px: the white word in the dark, already
+     scattering from its end. Inline, so only the sky is a separate file. -->
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%2307080d'/%3E%3Crect x='5' y='14' width='13' height='4' rx='2' fill='%23fff'/%3E%3Cg fill='%23fff'%3E%3Crect x='19.5' y='13' width='2' height='2' opacity='.85'/%3E%3Crect x='22.5' y='16.5' width='1.6' height='1.6' opacity='.7'/%3E%3Crect x='21.5' y='10' width='1.4' height='1.4' opacity='.55'/%3E%3Crect x='25' y='12.5' width='1.4' height='1.4' opacity='.5'/%3E%3Crect x='25.5' y='19' width='1.2' height='1.2' opacity='.4'/%3E%3Crect x='27.5' y='9' width='1' height='1' opacity='.35'/%3E%3C/g%3E%3C/svg%3E"/>
 <style>
   html, body { height: 100%; }
   /* no pan, no zoom, no bounce: a finger sliding across the page has to
@@ -14,13 +14,14 @@
   html{ touch-action: none; }
   body{
     margin: 0;
-    background: #ffffff;
+    /* the sky before the photograph arrives: a deep field is mostly this */
+    background: #04050a;
     overflow: hidden;
     display: flex;
     align-items: center;
     justify-content: center;
     font-family: 'Iowan Old Style', 'Palatino Linotype', 'Book Antiqua', Palatino, Georgia, serif;
-    color: #161616;
+    color: #ffffff;
     -webkit-font-smoothing: antialiased;
     /* nothing on this page can be taken away from it */
     user-select: none;
@@ -29,9 +30,37 @@
     -webkit-tap-highlight-color: transparent;
     cursor: default;
   }
+
+  /* Webb's first deep field, cropped for each orientation so that the
+     cluster and its arcs hang above the word instead of behind it. It
+     drifts, slowly; the scale always exceeds twice the shift, so the
+     drift never shows an edge. */
+  .sky{
+    position: fixed;
+    inset: 0;
+    overflow: hidden;
+  }
+  .sky img{
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    opacity: 0;
+    transition: opacity 1.6s ease;
+    animation: drift 70s ease-in-out infinite alternate;
+    will-change: transform;
+  }
+  .sky img.in{ opacity: 1; }
+  @keyframes drift{
+    from{ transform: scale(1.08) translate(-1.6%, 1%); }
+    to  { transform: scale(1.14) translate(1.6%, -1%); }
+  }
+
   .truth{
+    position: relative;
     padding: .35em .5em;
-    font-size: clamp(30px, 6.5vw, 46px);
+    font-size: min(184px, 30vw, 40vh);
     line-height: 1.25;
     opacity: 0;
     animation: appear 1.1s ease .15s forwards;
@@ -39,24 +68,17 @@
   @keyframes appear{ to{ opacity: 1; } }
 
   .word{
-    position: relative;
     display: block;
     white-space: nowrap;
   }
-  /* A small shadow at the word's feet, so that it stands on the white
-     instead of hanging in it: the word itself, laid down forward from its
-     baseline, flattened, slanted and softened. CSS has no name for the
-     baseline, so the script measures it into --base. */
-  .word::after{
-    content: attr(data-word);
-    position: absolute;
-    left: 0;
-    top: 0;
-    opacity: .2;
-    transform-origin: 0 var(--base, 1em);
-    transform: skewX(40deg) scaleY(-.3);
-    filter: blur(2px);
-    filter: blur(.045em);
+
+  /* the dust the word turns into */
+  .dust{
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
   }
 
   .sr{
@@ -70,11 +92,30 @@
 
   @media (prefers-reduced-motion: reduce){
     .truth{ animation-duration: .4s; }
+    .sky img{ animation: none; transform: scale(1.08); }
   }
 </style>
 </head>
 <body>
-<main class="truth"><span class="word" data-word="Truth" aria-hidden="true">Truth</span><span class="sr">Truth</span></main>
+<!-- Public domain: NASA, ESA, CSA, STScI. See README.md. Each crop comes
+     in two widths; sizes allows for the drift's extra 14%. -->
+<picture class="sky">
+  <source media="(min-aspect-ratio: 1/1)" type="image/avif"
+          srcset="sky/land-1920.avif 1920w, sky/land-2880.avif 2880w"
+          sizes="(min-aspect-ratio: 8/5) 114vw, 183vh"/>
+  <source media="(min-aspect-ratio: 1/1)" type="image/webp"
+          srcset="sky/land-1920.webp 1920w, sky/land-2880.webp 2880w"
+          sizes="(min-aspect-ratio: 8/5) 114vw, 183vh"/>
+  <source type="image/avif"
+          srcset="sky/port-1080.avif 1080w, sky/port-1600.avif 1600w"
+          sizes="(max-aspect-ratio: 9/16) 63vh, 114vw"/>
+  <source type="image/webp"
+          srcset="sky/port-1080.webp 1080w, sky/port-1600.webp 1600w"
+          sizes="(max-aspect-ratio: 9/16) 63vh, 114vw"/>
+  <img src="sky/land-1920.webp" alt="" decoding="async" fetchpriority="high"/>
+</picture>
+<main class="truth"><span class="word" aria-hidden="true">Truth</span><span class="sr">Truth</span></main>
+<canvas class="dust" aria-hidden="true"></canvas>
 
 <script>
 (function(){
@@ -85,45 +126,194 @@
 
   var stage = document.querySelector('.truth');
   var word = stage.querySelector('.word');
+  var canvas = document.querySelector('.dust');
+  var ctx = canvas.getContext('2d');
 
   function em(){ return parseFloat(getComputedStyle(stage).fontSize); }
 
-  /* the baseline, for the shadow to be laid down from: an empty box
-     standing on it knows where it is. In em, so it scales with the type. */
+  /* The photograph fades in over the dark once it is here, cached or not —
+     and decoded, or the fade would run its course over nothing and the
+     picture would drop in whole at the end of it. */
   (function(){
+    var img = document.querySelector('.sky img');
+    function lit(){ img.classList.add('in'); }
+    function ready(){ (img.decode ? img.decode() : Promise.resolve()).then(lit, lit); }
+    if(img.complete && img.naturalWidth) ready();
+    else img.addEventListener('load', ready);
+  })();
+
+  /* where the baseline runs on the page: an empty box standing on it knows */
+  function baseline(){
     var probe = document.createElement('span');
     probe.style.cssText = 'display:inline-block;width:0;height:0;vertical-align:baseline';
     word.appendChild(probe);
-    word.style.setProperty('--base', (probe.offsetTop / em()).toFixed(4) + 'em');
+    var y = probe.getBoundingClientRect().top;
     word.removeChild(probe);
-  })();
+    return y;
+  }
+
+  /* The dust. The word is drawn once into a small canvas exactly where it
+     stands, every covered cell of a fine grid becomes a grain, and each
+     grain is thrown away from the point where the word was reached.
+
+     Every position is a closed form of the time since the burst, so a
+     frame the browser skips (a hidden tab, a busy phone) costs nothing:
+     x = x0 + v0·(1 − e^(−K·t))/K + drift·t. */
+  var K = 5;          // how fast the burst spends itself, per second
+  var MAX = 9000;     // grains at most; the grid widens to keep under it
+  var LIFE = 2;       // the longest a grain lasts, in seconds
+  var N = 0, X0, Y0, VX, VY, DX, DY, L, A, S, gap0 = 1, t0 = 0, dpr = 1, raf = 0;
+  var bins = [];
+  for(var b = 0; b < 16; b++) bins.push([]);
+
+  function scatter(ox, oy){
+    dpr = Math.min(2, window.devicePixelRatio || 1);
+    var cw = Math.round(innerWidth * dpr), ch = Math.round(innerHeight * dpr);
+    if(canvas.width !== cw || canvas.height !== ch){ canvas.width = cw; canvas.height = ch; }
+
+    var r = word.getBoundingClientRect(), size = em(), cs = getComputedStyle(word);
+    var pad = size * .3, base = baseline() - r.top + pad;
+    var gap = 1.4, W, H, data, n;
+    for(;;){
+      var q = 1 / gap;
+      W = Math.ceil((r.width + 2 * pad) * q);
+      H = Math.ceil((r.height + 2 * pad) * q);
+      var off = document.createElement('canvas');
+      off.width = W;
+      off.height = H;
+      var x = off.getContext('2d', { willReadFrequently: true });
+      x.setTransform(q, 0, 0, q, 0, 0);
+      x.font = cs.fontStyle + ' ' + cs.fontWeight + ' ' + size + 'px ' + cs.fontFamily;
+      x.fontKerning = 'normal';
+      x.textBaseline = 'alphabetic';
+      x.fillStyle = '#fff';
+      x.fillText(word.textContent, pad, base);
+      data = x.getImageData(0, 0, W, H).data;
+      n = 0;
+      for(var i = 3; i < data.length; i += 4) if(data[i] >= 128) n++;
+      if(n <= MAX) break;
+      gap *= Math.sqrt(n / MAX) * 1.02;
+    }
+
+    N = n;
+    X0 = new Float32Array(n); Y0 = new Float32Array(n);
+    VX = new Float32Array(n); VY = new Float32Array(n);
+    DX = new Float32Array(n); DY = new Float32Array(n);
+    L = new Float32Array(n); A = new Float32Array(n); S = new Float32Array(n);
+    gap0 = gap;
+
+    /* the nearer a grain to the point of the blow, the harder it flies */
+    var V = size * 12, D = size * .8, J = size * 1.5, k = 0;
+    for(var j = 0; j < H; j++) for(var i2 = 0; i2 < W; i2++){
+      if(data[(j * W + i2) * 4 + 3] < 128) continue;
+      var gx = r.left - pad + (i2 + Math.random()) * gap;
+      var gy = r.top  - pad + (j  + Math.random()) * gap;
+      var dx = gx - ox, dy = gy - oy, d = Math.sqrt(dx * dx + dy * dy) || 1;
+      var burst = V * (.3 + .7 * Math.random()) * Math.pow(1 + d / D, -.6);
+      var turn = (Math.random() - .5) * .7, c = Math.cos(turn), s = Math.sin(turn);
+      var ux = dx / d, uy = dy / d;
+      X0[k] = gx;
+      Y0[k] = gy;
+      VX[k] = (ux * c - uy * s) * burst + (Math.random() - .5) * J;
+      VY[k] = (ux * s + uy * c) * burst + (Math.random() - .5) * J;
+      DX[k] = (Math.random() - .5) * 24;
+      DY[k] = (Math.random() - .5) * 24;
+      L[k] = rnd(.8, LIFE);
+      A[k] = rnd(.6, 1);
+      /* never under a device pixel: finer than that, a grain goes grey */
+      S[k] = rnd(1.1, 2.3) / dpr;
+      k++;
+    }
+  }
+
+  var shade = 1;      // how much light the word had when it burst
+  function render(now){
+    var t = (now - t0) / 1000;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    var e = (1 - Math.exp(-K * t)) / K;
+    /* in the first instant the grains still fill the letters edge to edge
+       and shine as the word did; then they shrink to dust */
+    var grow = Math.exp(-t / .09);
+    for(var b = 0; b < 16; b++) bins[b].length = 0;
+    var alive = 0;
+    for(var i = 0; i < N; i++){
+      var u = t / L[i];
+      if(u >= 1) continue;
+      alive++;
+      var a = shade * (A[i] + (1 - A[i]) * grow) * (1 - u) * Math.sqrt(1 - u);
+      var bin = (a * 16) | 0;
+      if(bin > 0) bins[bin > 15 ? 15 : bin].push(i);
+    }
+    for(b = 1; b < 16; b++){
+      var list = bins[b];
+      if(!list.length) continue;
+      ctx.fillStyle = 'rgba(255,255,255,' + ((b + .5) / 16).toFixed(3) + ')';
+      ctx.beginPath();
+      for(var j = 0; j < list.length; j++){
+        var p = list[j], sz = S[p] + (gap0 - S[p]) * grow;
+        ctx.rect(X0[p] + VX[p] * e + DX[p] * t - sz / 2,
+                 Y0[p] + VY[p] * e + DY[p] * t - sz / 2, sz, sz);
+      }
+      ctx.fill();
+    }
+    return alive;
+  }
+
+  function loop(now){
+    if(render(now)){ raf = requestAnimationFrame(loop); return; }
+    raf = 0;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+  }
 
   var state = 'here', timers = [];
   function clearT(){ timers.forEach(clearTimeout); timers = []; }
   function later(fn, ms){ timers.push(setTimeout(fn, ms)); }
 
-  /* the word dissolves where it stands: it goes soft first, then fades */
-  function dissolve(){
+  /* The word bursts: the dust is laid down where the letters stand and the
+     letters go out in the same instant, so there is no frame between. */
+  function explode(px, py){
     if(state !== 'here' && state !== 'forming') return;
     clearT();
     state = 'going';
-    var d = REDUCED ? 400 : 1300;
-    word.style.transition = 'filter '  + d + 'ms cubic-bezier(.22,.61,.36,1), ' +
-                            'opacity ' + Math.round(d * .85) + 'ms ease-in';
-    word.style.filter = 'blur(' + (em() * .35).toFixed(1) + 'px)';
-    word.style.opacity = '0';
+    /* reached again while it is still gathering, it can only give off the
+       little light it has so far */
+    var dim = parseFloat(getComputedStyle(word).opacity);
 
-    later(function(){
-      state = 'gone';
-      later(condense, REDUCED ? 600 : rnd(1100, 1700));
-    }, d + 40);
+    if(REDUCED){
+      word.style.transition = 'opacity 300ms ease';
+      word.style.opacity = '0';
+      later(condense, 700);
+      return;
+    }
+
+    /* The blow lands between the middle of the word and the side it was
+       reached from: off centre enough to throw the dust away from the
+       hand, near enough that the word still bursts rather than blows off. */
+    var r = word.getBoundingClientRect();
+    var cx = (r.left + r.right) / 2, cy = (r.top + r.bottom) / 2;
+    scatter(cx + .5 * (Math.min(r.right, Math.max(r.left, px)) - cx),
+            cy + .5 * (Math.min(r.bottom, Math.max(r.top, py)) - cy));
+    shade = dim;
+    t0 = performance.now();
+    render(t0);
+    word.style.transition = 'none';
+    word.style.filter = '';
+    word.style.opacity = '0';
+    if(!raf) raf = requestAnimationFrame(loop);
+
+    later(condense, Math.round(LIFE * 1000 + rnd(900, 1500)));
   }
 
-  /* and gathers again out of the fog, the same word as before */
+  /* and gathers again out of the dark, the same word as before */
   function condense(){
     clearT();
     state = 'forming';
     var d = REDUCED ? 400 : 1300;
+    word.style.transition = 'none';
+    word.style.opacity = '0';
+    word.style.filter = REDUCED ? '' : 'blur(' + (em() * .35).toFixed(1) + 'px)';
+    void word.offsetWidth;
     word.style.transition = 'filter ' + d + 'ms ease-out, opacity ' + d + 'ms ease';
     /* back to no inline style at all rather than to blur(0): at rest the
        word has to sit as crisp as plain text */
@@ -146,7 +336,7 @@
     if(state !== 'here' && state !== 'forming') return;
     var r = stage.getBoundingClientRect();
     if(Math.abs(e.clientX - (r.left + r.right) / 2) <= r.width  * REACH / 2 &&
-       Math.abs(e.clientY - (r.top + r.bottom) / 2) <= r.height * REACH / 2) dissolve();
+       Math.abs(e.clientY - (r.top + r.bottom) / 2) <= r.height * REACH / 2) explode(e.clientX, e.clientY);
   }
   document.addEventListener('pointermove', reach);
   document.addEventListener('pointerdown', reach);

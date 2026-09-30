@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>truth</title>
+<!-- The page itself at 16px: one word in the middle of the white, already
+     dissolving at its end. Inline, so the work stays a single file. -->
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cdefs%3E%3ClinearGradient id='g'%3E%3Cstop offset='.45' stop-color='%23161616'/%3E%3Cstop offset='1' stop-color='%23161616' stop-opacity='0'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='32' height='32' rx='6' fill='%23fbfaf7'/%3E%3Crect x='6' y='14' width='20' height='4' rx='2' fill='url(%23g)'/%3E%3C/svg%3E"/>
+<style>
+  html, body { height: 100%; }
+  /* no pan, no zoom, no bounce: a finger sliding across the page has to
+     keep reporting where it is, or it could never reach the word */
+  html{ touch-action: none; }
+  body{
+    margin: 0;
+    background: #ffffff;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: 'Iowan Old Style', 'Palatino Linotype', 'Book Antiqua', Palatino, Georgia, serif;
+    color: #161616;
+    -webkit-font-smoothing: antialiased;
+    /* nothing on this page can be taken away from it */
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
+    -webkit-tap-highlight-color: transparent;
+    cursor: default;
+  }
+  .truth{
+    padding: .35em .5em;
+    font-size: clamp(30px, 6.5vw, 46px);
+    line-height: 1.25;
+    opacity: 0;
+    animation: appear 1.1s ease .15s forwards;
+  }
+  @keyframes appear{ to{ opacity: 1; } }
+
+  .word{
+    position: relative;
+    display: block;
+    white-space: nowrap;
+  }
+  /* A small shadow at the word's feet, so that it stands on the white
+     instead of hanging in it: the word itself, laid down forward from its
+     baseline, flattened, slanted and softened. CSS has no name for the
+     baseline, so the script measures it into --base. */
+  .word::after{
+    content: attr(data-word);
+    position: absolute;
+    left: 0;
+    top: 0;
+    opacity: .2;
+    transform-origin: 0 var(--base, 1em);
+    transform: skewX(40deg) scaleY(-.3);
+    filter: blur(2px);
+    filter: blur(.045em);
+  }
+
+  .sr{
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  @media (prefers-reduced-motion: reduce){
+    .truth{ animation-duration: .4s; }
+  }
+</style>
+</head>
+<body>
+<main class="truth"><span class="word" data-word="Truth" aria-hidden="true">Truth</span><span class="sr">Truth</span></main>
+
+<script>
+(function(){
+  'use strict';
+  var REDUCED = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  function rnd(a, b){ return a + Math.random() * (b - a); }
+
+  var stage = document.querySelector('.truth');
+  var word = stage.querySelector('.word');
+
+  function em(){ return parseFloat(getComputedStyle(stage).fontSize); }
+
+  /* the baseline, for the shadow to be laid down from: an empty box
+     standing on it knows where it is. In em, so it scales with the type. */
+  (function(){
+    var probe = document.createElement('span');
+    probe.style.cssText = 'display:inline-block;width:0;height:0;vertical-align:baseline';
+    word.appendChild(probe);
+    word.style.setProperty('--base', (probe.offsetTop / em()).toFixed(4) + 'em');
+    word.removeChild(probe);
+  })();
+
+  var state = 'here', timers = [];
+  function clearT(){ timers.forEach(clearTimeout); timers = []; }
+  function later(fn, ms){ timers.push(setTimeout(fn, ms)); }
+
+  /* the word dissolves where it stands: it goes soft first, then fades */
+  function dissolve(){
+    if(state !== 'here' && state !== 'forming') return;
+    clearT();
+    state = 'going';
+    var d = REDUCED ? 400 : 1300;
+    word.style.transition = 'filter '  + d + 'ms cubic-bezier(.22,.61,.36,1), ' +
+                            'opacity ' + Math.round(d * .85) + 'ms ease-in';
+    word.style.filter = 'blur(' + (em() * .35).toFixed(1) + 'px)';
+    word.style.opacity = '0';
+
+    later(function(){
+      state = 'gone';
+      later(condense, REDUCED ? 600 : rnd(1100, 1700));
+    }, d + 40);
+  }
+
+  /* and gathers again out of the fog, the same word as before */
+  function condense(){
+    clearT();
+    state = 'forming';
+    var d = REDUCED ? 400 : 1300;
+    word.style.transition = 'filter ' + d + 'ms ease-out, opacity ' + d + 'ms ease';
+    /* back to no inline style at all rather than to blur(0): at rest the
+       word has to sit as crisp as plain text */
+    word.style.filter = '';
+    word.style.opacity = '';
+
+    later(function(){
+      state = 'here';
+      word.style.transition = '';
+    }, d + 40);
+  }
+
+  /* A hover, a tap, or on a phone a finger sliding onto the word from
+     anywhere else: a touch stays with the element it started on, so the
+     word itself would never hear about the slide. Test the point against
+     the word's place instead. The reach is the word's box scaled by √2
+     each way about its centre: twice its area, in the same proportions. */
+  var REACH = Math.SQRT2;
+  function reach(e){
+    if(state !== 'here' && state !== 'forming') return;
+    var r = stage.getBoundingClientRect();
+    if(Math.abs(e.clientX - (r.left + r.right) / 2) <= r.width  * REACH / 2 &&
+       Math.abs(e.clientY - (r.top + r.bottom) / 2) <= r.height * REACH / 2) dissolve();
+  }
+  document.addEventListener('pointermove', reach);
+  document.addEventListener('pointerdown', reach);
+})();
+</script>
+</body>
+</html>
