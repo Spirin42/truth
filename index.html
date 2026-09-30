@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>truth</title>
+<!-- The page itself at 16px: one word in the middle of the white, already
+     coming apart at its end. Inline, so the work stays a single file. -->
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%23fbfaf7'/%3E%3Crect x='6' y='14' width='14' height='4' rx='2' fill='%23161616'/%3E%3Crect x='22' y='12' width='2.5' height='2.5' rx='.6' fill='%23161616' opacity='.55'/%3E%3Crect x='25.5' y='8.5' width='2' height='2' rx='.5' fill='%23161616' opacity='.3'/%3E%3C/svg%3E"/>
+<style>
+  html, body { height: 100%; }
+  /* no pan, no zoom, no bounce: a finger sliding across the page has to
+     keep reporting where it is, or it could never reach the word */
+  html{ touch-action: none; }
+  body{
+    margin: 0;
+    background: #ffffff;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: 'Iowan Old Style', 'Palatino Linotype', 'Book Antiqua', Palatino, Georgia, serif;
+    color: #161616;
+    -webkit-font-smoothing: antialiased;
+    /* nothing on this page can be taken away from it */
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
+    -webkit-tap-highlight-color: transparent;
+    cursor: default;
+  }
+  .truth{
+    /* the padding is only there to be reached: it widens the word's reach
+       for a finger without moving the word */
+    padding: .35em .5em;
+    font-size: clamp(30px, 6.5vw, 46px);
+    line-height: 1.25;
+  }
+  .word{
+    display: block;
+    white-space: nowrap;
+    opacity: 0;
+    animation: appear 1.1s ease .15s forwards;
+  }
+  @keyframes appear{ to{ opacity: 1; } }
+
+  .ch{ display: inline-block; }
+
+  .sr{
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  @media (prefers-reduced-motion: reduce){
+    .word{ animation-duration: .4s; }
+  }
+</style>
+</head>
+<body>
+<main class="truth"><span class="word" aria-hidden="true">Truth</span><span class="sr">Truth</span></main>
+
+<script>
+(function(){
+  'use strict';
+  var REDUCED = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  function rnd(a, b){ return a + Math.random() * (b - a); }
+
+  var stage = document.querySelector('.truth');
+  var word = stage.querySelector('.word');
+
+  function em(){ return parseFloat(getComputedStyle(stage).fontSize); }
+
+  /* Every letter has to leave on its own, so each gets its own box — and
+     separate boxes lose the kerning between them: at this size the r
+     visibly backs away from the T. Measure each pair set as one run
+     against its two letters set apart, and give the difference back as a
+     margin, in em so it scales with the type. */
+  var chs = (function split(){
+    var text = word.textContent, out = [];
+    var probe = document.createElement('span');
+    probe.style.cssText = 'position:absolute;visibility:hidden;white-space:pre';
+    stage.appendChild(probe);
+    function width(s){ probe.textContent = s; return probe.getBoundingClientRect().width; }
+    var size = em();
+
+    word.textContent = '';
+    for(var i = 0; i < text.length; i++){
+      var c = document.createElement('span');
+      c.className = 'ch';
+      c.textContent = text[i];
+      if(i < text.length - 1){
+        var k = width(text[i] + text[i + 1]) - width(text[i]) - width(text[i + 1]);
+        if(Math.abs(k) > .01) c.style.marginRight = (k / size).toFixed(4) + 'em';
+      }
+      word.appendChild(c);
+      out.push(c);
+    }
+    stage.removeChild(probe);
+    return out;
+  })();
+
+  var state = 'here', timers = [];
+  function clearT(){ timers.forEach(clearTimeout); timers = []; }
+  function later(fn, ms){ timers.push(setTimeout(fn, ms)); }
+
+  /* the word comes apart: every letter blurs, lifts and turns on its own clock */
+  function disperse(){
+    if(state !== 'here' && state !== 'forming') return;
+    clearT();
+    state = 'going';
+    var blur = (em() * .4).toFixed(1), end = 0;
+
+    chs.forEach(function(c){
+      var d = REDUCED ? 400 : rnd(900, 1500), dl = REDUCED ? 0 : rnd(0, 350);
+      end = Math.max(end, d + dl);
+      c.style.transition = 'transform ' + d + 'ms cubic-bezier(.22,.61,.36,1) ' + dl + 'ms, ' +
+                           'filter '    + d + 'ms ease ' + dl + 'ms, ' +
+                           'opacity '   + Math.round(d * .8) + 'ms ease ' + dl + 'ms';
+      c.style.transform = REDUCED ? '' :
+        'translate(' + rnd(-1.4, 1.4).toFixed(2) + 'em, ' + rnd(-2, -.5).toFixed(2) + 'em)' +
+        ' rotate(' + rnd(-22, 22).toFixed(1) + 'deg)';
+      c.style.filter = 'blur(' + blur + 'px)';
+      c.style.opacity = '0';
+    });
+
+    later(function(){
+      state = 'gone';
+      later(condense, REDUCED ? 600 : rnd(1100, 1700));
+    }, end + 40);
+  }
+
+  /* and gathers again out of the fog, the same word as before */
+  function condense(){
+    clearT();
+    state = 'forming';
+    var blur = (em() * .35).toFixed(1), end = 0;
+
+    chs.forEach(function(c){
+      c.style.transition = 'none';
+      c.style.opacity = '0';
+      c.style.filter = 'blur(' + blur + 'px)';
+      c.style.transform = REDUCED ? '' :
+        'translate(' + rnd(-.25, .25).toFixed(2) + 'em, ' + rnd(-.2, .2).toFixed(2) + 'em)';
+    });
+
+    void word.offsetWidth;
+
+    chs.forEach(function(c){
+      var d = REDUCED ? 400 : rnd(1000, 1600), dl = REDUCED ? 0 : rnd(0, 400);
+      end = Math.max(end, d + dl);
+      c.style.transition = 'transform ' + d + 'ms ease-out ' + dl + 'ms, ' +
+                           'filter '    + d + 'ms ease-out ' + dl + 'ms, ' +
+                           'opacity '   + d + 'ms ease '     + dl + 'ms';
+      /* back to no inline style at all rather than to blur(0) and
+         translate(0): at rest the word has to sit as crisp as plain text */
+      c.style.transform = '';
+      c.style.filter = '';
+      c.style.opacity = '';
+    });
+
+    later(function(){
+      state = 'here';
+      chs.forEach(function(c){ c.style.transition = ''; });
+    }, end + 40);
+  }
+
+  /* A hover, a tap, or on a phone a finger sliding onto the word from
+     anywhere else: a touch stays with the element it started on, so the
+     word itself would never hear about the slide. Test the point against
+     the word's place instead. */
+  function reach(e){
+    if(state !== 'here' && state !== 'forming') return;
+    var r = stage.getBoundingClientRect();
+    if(e.clientX >= r.left && e.clientX <= r.right &&
+       e.clientY >= r.top  && e.clientY <= r.bottom) disperse();
+  }
+  document.addEventListener('pointermove', reach);
+  document.addEventListener('pointerdown', reach);
+})();
+</script>
+</body>
+</html>
