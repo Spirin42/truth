@@ -152,26 +152,48 @@
     return y;
   }
 
-  /* The dust. The word is drawn once into a small canvas exactly where it
-     stands, every covered cell of a fine grid becomes a grain, and each
-     grain is thrown away from the point where the word was reached.
+  /* The dust.
 
-     Every position is a closed form of the time since the burst, so a
-     frame the browser skips (a hidden tab, a busy phone) costs nothing:
-     x = x0 + v0·(1 − e^(−K·t))/K + drift·t. */
-  var K = 5;          // how fast the burst spends itself, per second
+     When the word bursts it is drawn once into a small canvas exactly where
+     it stands, and every covered cell of a fine grid becomes a grain with a
+     home in the letters. The grains never go out. Once the burst is spent
+     they hang in the dark, each drifting round a slow loop of its own, and
+     they flee from a hand: a moving cursor, a click, a finger on the glass.
+     A cursor at rest frightens nobody.
+
+     Left alone for a second, they go home, each along a smooth path of its
+     own length that starts wherever it is, moving however it moves; a hand
+     among them on the way scatters them again. When the last grain is in
+     its place, the word itself takes over from the dust. */
+  var K = 5;          // how fast a burst or a fright dies down, per second
   var MAX = 9000;     // grains at most; the grid widens to keep under it
-  var LIFE = 2;       // the longest a grain lasts, in seconds
-  var N = 0, X0, Y0, VX, VY, DX, DY, L, A, S, gap0 = 1, t0 = 0, dpr = 1, raf = 0;
+  var FEAR = 24;      // how hard a hand pushes a grain, em/s², at the hand itself
+  var CALM = 1000;    // ms untouched before the grains go home
+  var HOT = 120;      // ms a hand stays frightening after it last moved
+
+  var state = 'word'; // word → dust ⇄ gathering → settling → word
+  var N = 0, gap0 = 1, size0 = 1, cx0 = 0, cy0 = 0, dpr = 1, raf = 0, last = 0;
+  var burstAt = 0, calmSince = 0, gatherAt = 0;
+  var PX, PY, VX, VY, HX, HY, TH, TS, TR, A, S, NV, TW, PH, FL, GX, GY, GU, GV, GT;
   var bins = [];
   for(var b = 0; b < 16; b++) bins.push([]);
 
-  function scatter(ox, oy){
+  function fit(){
     dpr = Math.min(2, window.devicePixelRatio || 1);
     var cw = Math.round(innerWidth * dpr), ch = Math.round(innerHeight * dpr);
     if(canvas.width !== cw || canvas.height !== ch){ canvas.width = cw; canvas.height = ch; }
+  }
 
-    var r = word.getBoundingClientRect(), size = em(), cs = getComputedStyle(word);
+  /* where the word stands and how large, for the homes to follow it through
+     a resize or a turn of the phone */
+  function anchor(){
+    var r = word.getBoundingClientRect();
+    return { r: r, x: (r.left + r.right) / 2, y: (r.top + r.bottom) / 2, size: em() };
+  }
+
+  function scatter(ox, oy){
+    fit();
+    var a = anchor(), r = a.r, size = a.size, cs = getComputedStyle(word);
     var pad = size * .3, base = baseline() - r.top + pad;
     var gap = 1.4, W, H, data, n;
     for(;;){
@@ -190,58 +212,138 @@
       x.fillText(word.textContent, pad, base);
       data = x.getImageData(0, 0, W, H).data;
       n = 0;
-      for(var i = 3; i < data.length; i += 4) if(data[i] >= 128) n++;
+      for(var p = 3; p < data.length; p += 4) if(data[p] >= 128) n++;
       if(n <= MAX) break;
       gap *= Math.sqrt(n / MAX) * 1.02;
     }
 
     N = n;
-    X0 = new Float32Array(n); Y0 = new Float32Array(n);
-    VX = new Float32Array(n); VY = new Float32Array(n);
-    DX = new Float32Array(n); DY = new Float32Array(n);
-    L = new Float32Array(n); A = new Float32Array(n); S = new Float32Array(n);
-    gap0 = gap;
+    function arr(){ return new Float32Array(n); }
+    PX = arr(); PY = arr(); VX = arr(); VY = arr(); HX = arr(); HY = arr();
+    TH = arr(); TS = arr(); TR = arr(); A = arr(); S = arr(); NV = arr();
+    TW = arr(); PH = arr(); FL = arr();
+    GX = arr(); GY = arr(); GU = arr(); GV = arr(); GT = arr();
+    gap0 = gap; size0 = size; cx0 = a.x; cy0 = a.y;
 
-    /* the nearer a grain to the point of the blow, the harder it flies */
-    var V = size * 12, D = size * .8, J = size * 1.5, k = 0;
-    for(var j = 0; j < H; j++) for(var i2 = 0; i2 < W; i2++){
-      if(data[(j * W + i2) * 4 + 3] < 128) continue;
-      var gx = r.left - pad + (i2 + Math.random()) * gap;
-      var gy = r.top  - pad + (j  + Math.random()) * gap;
+    /* The nearer a grain to the point of the blow, the harder it flies. The
+       blow is held in along whichever side of the screen is short, so on a
+       phone, where the word fills the width, the dust goes up and down
+       into the room there is rather than into the walls. */
+    var V = size * 12, D = size * .8, J = V / 8, k = 0;
+    var kx = Math.min(1, K * .45 * innerWidth / V), ky = Math.min(1, K * .45 * innerHeight / V);
+    for(var j = 0; j < H; j++) for(var i = 0; i < W; i++){
+      if(data[(j * W + i) * 4 + 3] < 128) continue;
+      var gx = r.left - pad + (i + Math.random()) * gap;
+      var gy = r.top  - pad + (j + Math.random()) * gap;
       var dx = gx - ox, dy = gy - oy, d = Math.sqrt(dx * dx + dy * dy) || 1;
       var burst = V * (.3 + .7 * Math.random()) * Math.pow(1 + d / D, -.6);
       var turn = (Math.random() - .5) * .7, c = Math.cos(turn), s = Math.sin(turn);
-      var ux = dx / d, uy = dy / d;
-      X0[k] = gx;
-      Y0[k] = gy;
-      VX[k] = (ux * c - uy * s) * burst + (Math.random() - .5) * J;
-      VY[k] = (ux * s + uy * c) * burst + (Math.random() - .5) * J;
-      DX[k] = (Math.random() - .5) * 24;
-      DY[k] = (Math.random() - .5) * 24;
-      L[k] = rnd(.8, LIFE);
+      HX[k] = PX[k] = gx;
+      HY[k] = PY[k] = gy;
+      VX[k] = ((dx * c - dy * s) / d * burst + (Math.random() - .5) * J) * kx;
+      VY[k] = ((dx * s + dy * c) / d * burst + (Math.random() - .5) * J) * ky;
+      TH[k] = Math.random() * 2 * Math.PI;                        // the way it drifts,
+      TS[k] = rnd(3, 12);                                         // how fast, px/s,
+      TR[k] = (Math.random() < .5 ? -1 : 1) * rnd(.15, .5);      // and how fast that way turns
       A[k] = rnd(.6, 1);
-      /* never under a device pixel: finer than that, a grain goes grey */
-      S[k] = rnd(1.1, 2.3) / dpr;
+      S[k] = rnd(1.1, 2.3) / dpr;   // never under a device pixel: finer, a grain goes grey
+      NV[k] = rnd(.6, 1.4);         // how easily it takes fright
+      TW[k] = rnd(1, 3);
+      PH[k] = Math.random() * 2 * Math.PI;
       k++;
     }
   }
 
-  var shade = 1;      // how much light the word had when it burst
-  function render(now){
-    var t = (now - t0) / 1000;
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    var e = (1 - Math.exp(-K * t)) / K;
-    /* in the first instant the grains still fill the letters edge to edge
-       and shine as the word did; then they shrink to dust */
-    var grow = Math.exp(-t / .09);
-    for(var b = 0; b < 16; b++) bins[b].length = 0;
-    var alive = 0;
+  function frame(now){
+    raf = 0;
+    var dt = Math.min(.033, Math.max(0, (now - last) / 1000));
+    last = now;
+    var W = innerWidth, H = innerHeight;
+    var hot = ptr.down || now - ptr.moved < HOT;
+    var R = size0 * (ptr.touch ? 1.1 : .8), R2 = R * R, F = FEAR * size0;
+    var kd = 1 - Math.exp(-K * dt);
+    var fb = Math.exp(-(now - burstAt) / 90);
+    var gathering = state === 'gathering', tg = (now - gatherAt) / 1000, home = true;
+    var touched = false;
+
     for(var i = 0; i < N; i++){
-      var u = t / L[i];
-      if(u >= 1) continue;
-      alive++;
-      var a = shade * (A[i] + (1 - A[i]) * grow) * (1 - u) * Math.sqrt(1 - u);
+      var x, y, vx, vy, f;
+      if(gathering){
+        /* a cubic from where the grain is, moving as it moves, to its home,
+           where it arrives at rest: exact, and no tail to wait out */
+        var T = GT[i], u = tg / T;
+        if(u >= 1) u = 1; else home = false;
+        var u2 = u * u, u3 = u2 * u;
+        var h00 = 2 * u3 - 3 * u2 + 1, h10 = u3 - 2 * u2 + u;
+        var d00 = (6 * u2 - 6 * u) / T, d10 = 3 * u2 - 4 * u + 1;
+        x = h00 * GX[i] + h10 * T * GU[i] + (1 - h00) * HX[i];
+        y = h00 * GY[i] + h10 * T * GV[i] + (1 - h00) * HY[i];
+        vx = d00 * (GX[i] - HX[i]) + d10 * GU[i];
+        vy = d00 * (GY[i] - HY[i]) + d10 * GV[i];
+        /* nearly home, it swells back to fill its cell of the letter */
+        f = u < .55 ? 0 : (u - .55) / .45;
+        f = f * f * (3 - 2 * f);
+      } else {
+        x = PX[i];
+        y = PY[i];
+        /* its own slow loop: the heading turns a little every moment */
+        var th = TH[i] += TR[i] * dt;
+        var sx = Math.cos(th) * TS[i], sy = Math.sin(th) * TS[i];
+        vx = VX[i] + (sx - VX[i]) * kd;
+        vy = VY[i] + (sy - VY[i]) * kd;
+        /* just after the burst the grains still fill the letters */
+        f = fb;
+      }
+      if(hot){
+        var dx = x - ptr.x, dy = y - ptr.y, d2 = dx * dx + dy * dy;
+        if(d2 < R2){
+          var d = Math.sqrt(d2) || .01, q = 1 - d / R;
+          q = F * NV[i] * q * q * dt / d;
+          vx += dx * q;
+          vy += dy * q;
+          touched = true;
+        }
+      }
+      if(!gathering){
+        x += vx * dt;
+        y += vy * dt;
+        /* The edges of the screen are walls. A grain that reaches one comes
+           off it softly, and its drift turns back into the room, so the
+           dust never settles along the edges. */
+        if(x < 0){ x = -x; vx = Math.abs(vx) * .4; if(sx < 0) TH[i] = Math.PI - th; }
+        else if(x > W){ x = 2 * W - x; vx = -Math.abs(vx) * .4; if(sx > 0) TH[i] = Math.PI - th; }
+        if(y < 0){ y = -y; vy = Math.abs(vy) * .4; if(sy < 0) TH[i] = -TH[i]; }
+        else if(y > H){ y = 2 * H - y; vy = -Math.abs(vy) * .4; if(sy > 0) TH[i] = -TH[i]; }
+      }
+      PX[i] = x; PY[i] = y; VX[i] = vx; VY[i] = vy; FL[i] = f;
+    }
+
+    draw(now / 1000);
+
+    if(touched){
+      calmSince = now;
+      /* a hand among them on the way home, and they scatter again, each
+         carrying on from where and how it was moving */
+      if(gathering) state = 'dust';
+    } else if(state === 'dust' && now - calmSince >= CALM){
+      gather(now);
+    } else if(gathering && home){
+      settle();
+      return;
+    }
+    raf = requestAnimationFrame(frame);
+  }
+
+  function draw(ts){
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, innerWidth, innerHeight);
+    for(var b = 0; b < 16; b++) bins[b].length = 0;
+    for(var i = 0; i < N; i++){
+      var f = FL[i];
+      /* hanging in the dark a grain glints now and then; filling its cell
+         of the letter it shines steadily, as the letter did */
+      var a = (A[i] + (1 - A[i]) * f) *
+              (1 - .15 * (1 - f) * (.5 + .5 * Math.sin(TW[i] * ts + PH[i])));
       var bin = (a * 16) | 0;
       if(bin > 0) bins[bin > 15 ? 15 : bin].push(i);
     }
@@ -251,42 +353,55 @@
       ctx.fillStyle = 'rgba(255,255,255,' + ((b + .5) / 16).toFixed(3) + ')';
       ctx.beginPath();
       for(var j = 0; j < list.length; j++){
-        var p = list[j], sz = S[p] + (gap0 - S[p]) * grow;
-        ctx.rect(X0[p] + VX[p] * e + DX[p] * t - sz / 2,
-                 Y0[p] + VY[p] * e + DY[p] * t - sz / 2, sz, sz);
+        var p = list[j], sz = S[p] + (gap0 - S[p]) * FL[p];
+        ctx.rect(PX[p] - sz / 2, PY[p] - sz / 2, sz, sz);
       }
       ctx.fill();
     }
-    return alive;
   }
 
-  function loop(now){
-    if(render(now)){ raf = requestAnimationFrame(loop); return; }
-    raf = 0;
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+  function gather(now){
+    state = 'gathering';
+    gatherAt = now;
+    for(var i = 0; i < N; i++){
+      GX[i] = PX[i];
+      GY[i] = PY[i];
+      GU[i] = VX[i];
+      GV[i] = VY[i];
+      var dx = HX[i] - PX[i], dy = HY[i] - PY[i];
+      GT[i] = rnd(.8, 1.4) + .5 * Math.min(1, Math.sqrt(dx * dx + dy * dy) / (4 * size0));
+    }
   }
 
-  var state = 'here', timers = [];
-  function clearT(){ timers.forEach(clearTimeout); timers = []; }
-  function later(fn, ms){ timers.push(setTimeout(fn, ms)); }
+  /* every grain home: the word comes back through the dust, the dust goes */
+  function settle(){
+    state = 'settling';
+    word.style.transition = 'opacity 220ms ease';
+    word.style.opacity = '';
+    canvas.style.transition = 'opacity 220ms ease';
+    canvas.style.opacity = '0';
+    setTimeout(function(){
+      N = 0;
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      canvas.style.transition = '';
+      canvas.style.opacity = '';
+      word.style.transition = '';
+      state = 'word';
+    }, 240);
+  }
 
   /* The word bursts: the dust is laid down where the letters stand and the
      letters go out in the same instant, so there is no frame between. */
   function explode(px, py){
-    if(state !== 'here' && state !== 'forming') return;
-    clearT();
-    state = 'going';
-    /* reached again while it is still gathering, it can only give off the
-       little light it has so far */
-    var dim = parseFloat(getComputedStyle(word).opacity);
-
     if(REDUCED){
+      state = 'gone';
       word.style.transition = 'opacity 300ms ease';
       word.style.opacity = '0';
-      later(condense, 700);
+      hush();
       return;
     }
-
+    state = 'dust';
     /* The blow lands between the middle of the word and the side it was
        reached from: off centre enough to throw the dust away from the
        hand, near enough that the word still bursts rather than blows off. */
@@ -294,52 +409,75 @@
     var cx = (r.left + r.right) / 2, cy = (r.top + r.bottom) / 2;
     scatter(cx + .5 * (Math.min(r.right, Math.max(r.left, px)) - cx),
             cy + .5 * (Math.min(r.bottom, Math.max(r.top, py)) - cy));
-    shade = dim;
-    t0 = performance.now();
-    render(t0);
-    word.style.transition = 'none';
-    word.style.filter = '';
-    word.style.opacity = '0';
-    if(!raf) raf = requestAnimationFrame(loop);
-
-    later(condense, Math.round(LIFE * 1000 + rnd(900, 1500)));
-  }
-
-  /* and gathers again out of the dark, the same word as before */
-  function condense(){
-    clearT();
-    state = 'forming';
-    var d = REDUCED ? 400 : 1300;
+    burstAt = calmSince = last = performance.now();
+    if(raf) cancelAnimationFrame(raf);
+    frame(burstAt);
     word.style.transition = 'none';
     word.style.opacity = '0';
-    word.style.filter = REDUCED ? '' : 'blur(' + (em() * .35).toFixed(1) + 'px)';
-    void word.offsetWidth;
-    word.style.transition = 'filter ' + d + 'ms ease-out, opacity ' + d + 'ms ease';
-    /* back to no inline style at all rather than to blur(0): at rest the
-       word has to sit as crisp as plain text */
-    word.style.filter = '';
-    word.style.opacity = '';
-
-    later(function(){
-      state = 'here';
-      word.style.transition = '';
-    }, d + 40);
   }
 
-  /* A hover, a tap, or on a phone a finger sliding onto the word from
-     anywhere else: a touch stays with the element it started on, so the
-     word itself would never hear about the slide. Test the point against
-     the word's place instead. The reach is the word's box scaled by √2
-     each way about its centre: twice its area, in the same proportions. */
+  /* with less motion asked for, the word only goes out, and comes back once
+     it has been left alone for as long as the dust would be */
+  var quiet = 0;
+  function hush(){
+    clearTimeout(quiet);
+    quiet = setTimeout(function(){
+      word.style.transition = 'opacity 400ms ease';
+      word.style.opacity = '';
+      setTimeout(function(){ word.style.transition = ''; state = 'word'; }, 440);
+    }, CALM);
+  }
+
+  /* the word can be reached only once it has fully appeared */
+  var armed = false;
+  function arm(){ armed = true; }
+  stage.addEventListener('animationend', arm);
+  setTimeout(arm, 1500);
+
+  /* The reach is the word's box scaled by √2 each way about its centre:
+     twice its area, in the same proportions. */
   var REACH = Math.SQRT2;
-  function reach(e){
-    if(state !== 'here' && state !== 'forming') return;
+  function inReach(e){
     var r = stage.getBoundingClientRect();
-    if(Math.abs(e.clientX - (r.left + r.right) / 2) <= r.width  * REACH / 2 &&
-       Math.abs(e.clientY - (r.top + r.bottom) / 2) <= r.height * REACH / 2) explode(e.clientX, e.clientY);
+    return Math.abs(e.clientX - (r.left + r.right) / 2) <= r.width  * REACH / 2 &&
+           Math.abs(e.clientY - (r.top + r.bottom) / 2) <= r.height * REACH / 2;
   }
-  document.addEventListener('pointermove', reach);
-  document.addEventListener('pointerdown', reach);
+
+  /* One hand, whatever it is. A touch stays with the element it started
+     on, so everything is read off the document: a finger sliding in from
+     anywhere reaches the word, and the dust, all the same. */
+  var ptr = { x: 0, y: 0, moved: -1e9, down: false, touch: false };
+  function hand(e){
+    ptr.x = e.clientX;
+    ptr.y = e.clientY;
+    ptr.moved = performance.now();
+    ptr.touch = e.pointerType !== 'mouse';
+    if(state === 'word' && armed && inReach(e)) explode(e.clientX, e.clientY);
+    else if(state === 'gone' && inReach(e)) hush();
+  }
+  function lift(){ ptr.down = false; }
+  document.addEventListener('pointermove', hand);
+  document.addEventListener('pointerdown', function(e){
+    if(e.pointerType !== 'mouse') ptr.down = true;
+    hand(e);
+  });
+  document.addEventListener('pointerup', lift);
+  document.addEventListener('pointercancel', lift);
+  /* a cursor that leaves the window leaves the grains alone */
+  document.addEventListener('pointerout', function(e){
+    if(!e.relatedTarget){ ptr.down = false; ptr.moved = -1e9; }
+  });
+
+  window.addEventListener('resize', function(){
+    if(!N) return;
+    fit();
+    var a = anchor(), k = a.size / size0;
+    for(var i = 0; i < N; i++){
+      HX[i] = a.x + (HX[i] - cx0) * k;
+      HY[i] = a.y + (HY[i] - cy0) * k;
+    }
+    cx0 = a.x; cy0 = a.y; gap0 *= k; size0 = a.size;
+  });
 })();
 </script>
 </body>
